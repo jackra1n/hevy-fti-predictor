@@ -9,3 +9,17 @@ dependencies = [
     "python-dotenv>=1.2.2",
     "requests>=2.33.1",
 ]
+
+[tool.basedpyright]
+typeCheckingMode = "standard"
+venvPath = "."
+venv = ".venv"
+reportExplicitAny = "none"
+reportAny = "none"
+reportMissingTypeArgument = "warning"
+
+[dependency-groups]
+dev = [
+    "basedpyright>=1.39.3",
+    "pandas-stubs>=3.0.0.260204",
+]

@@ -1,8 +1,8 @@
 import json
-import os
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import Any
 
 import pandas as pd
 
@@ -11,7 +11,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 from hevy_client import HevyClient
 
 
-def save_raw_json(workouts: list[dict], output_dir: Path) -> Path:
+def save_raw_json(workouts: list[dict[str, Any]], output_dir: Path) -> Path:
     timestamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
     raw_path = output_dir / f"workouts_{timestamp}.json"
     raw_path.write_text(json.dumps(workouts, indent=2), encoding="utf-8")
@@ -19,7 +19,7 @@ def save_raw_json(workouts: list[dict], output_dir: Path) -> Path:
     return raw_path
 
 
-def flatten_workouts_to_csv(workouts: list[dict]) -> pd.DataFrame:
+def flatten_workouts_to_csv(workouts: list[dict[str, Any]]) -> pd.DataFrame:
     rows = []
     for w in workouts:
         workout_id = w.get("id")

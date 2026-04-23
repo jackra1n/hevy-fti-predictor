@@ -18,8 +18,6 @@ _EXERCISE_TO_MUSCLE = {
     # Back
     "Deadlift (Barbell)": "Back",
     "Deadlift (Dumbbell)": "Back",
-    "Romanian Deadlift (Barbell)": "Back",
-    "Romanian Deadlift (Dumbbell)": "Back",
     "Pull Up": "Back",
     "Chin Up": "Back",
     "Lat Pulldown (Cable)": "Back",

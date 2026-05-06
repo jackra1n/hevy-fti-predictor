@@ -52,6 +52,21 @@ dvc pull                             # download from GCS
 
 Data is stored in a GCS bucket. [More info →](docs/gcs.md)
 
+## CI/CD
+
+A GitHub Actions workflow (`.github/workflows/update-data.yml`) runs daily to fetch new Hevy workouts, compute features, and push updated data to GCS.
+
+Requires these **repository secrets** (Settings → Secrets and variables → Actions):
+
+| Secret | Description |
+|--------|-------------|
+| `HEVY_API_KEY` | Hevy API key |
+| `GCP_PROJECT_ID` | GCP project ID |
+| `GCP_WORKLOAD_IDENTITY_PROVIDER` | WIF provider resource name |
+| `GCP_SERVICE_ACCOUNT` | SA email (`github-actions@<PROJECT>.iam.gserviceaccount.com`) |
+
+See [docs/gcs.md](docs/gcs.md) for setup instructions.
+
 ## Tools
 
 | Tool | Purpose |

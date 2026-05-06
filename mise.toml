@@ -1,2 +1,3 @@
 [tools]
 dvc = "latest"
+gcloud = "latest"

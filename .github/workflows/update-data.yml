@@ -1,0 +1,49 @@
+name: Update Data
+
+on:
+  schedule:
+    - cron: '0 6 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  id-token: write
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: google-github-actions/auth@v3
+        with:
+          project_id: ${{ secrets.GCP_PROJECT_ID }}
+          workload_identity_provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ secrets.GCP_SERVICE_ACCOUNT }}
+
+      - uses: astral-sh/setup-uv@v8
+        with:
+          python-version: '3.12'
+
+      - run: uv sync
+
+      - run: pipx install 'dvc[gs]'
+
+      - run: dvc pull
+
+      - run: uv run scripts/fetch_workouts.py
+        env:
+          HEVY_API_KEY: ${{ secrets.HEVY_API_KEY }}
+
+      - run: uv run src/feature_engineering.py
+
+      - run: |
+          dvc add data/raw/ data/processed/
+          dvc push
+
+      - run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email 'github-actions[bot]@users.noreply.github.com'
+          git add data/raw.dvc data/processed.dvc
+          git diff --cached --quiet || git commit -m "Update workout data [skip ci]"
+          git push

@@ -42,10 +42,6 @@ Thumbs.db
 .env.local
 .env.*.local
 
-# Data (raw & processed outputs)
-data/raw/
-data/processed/
-
 # Jupyter
 .ipynb_checkpoints
 
@@ -56,3 +52,7 @@ htmlcov/
 
 # uv
 uv.lock
+
+# DVC
+.dvc/cache/
+.dvc/tmp/

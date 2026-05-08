@@ -8,6 +8,7 @@ dependencies = [
     "pydantic>=2.13.3",
     "python-dotenv>=1.2.2",
     "requests>=2.33.1",
+    "scikit-learn>=1.8.0",
 ]
 
 [tool.basedpyright]

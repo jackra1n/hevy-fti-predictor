@@ -5,8 +5,8 @@ description = "Add your description here"
 requires-python = ">=3.12"
 dependencies = [
     "dagshub>=0.7.0",
-    "mlflow>=1.27.0",
-    "pandas>=3.0.2",
+    "mlflow>=2.16.0",
+    "pandas>=2.2,<3",
     "pydantic>=2.13.3",
     "python-dotenv>=1.2.2",
     "requests>=2.33.1",
@@ -24,5 +24,5 @@ reportMissingTypeArgument = "warning"
 [dependency-groups]
 dev = [
     "basedpyright>=1.39.3",
-    "pandas-stubs>=3.0.0.260204",
+    "pandas-stubs>=2.2.0",
 ]

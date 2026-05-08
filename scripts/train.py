@@ -1,9 +1,14 @@
 import json
+import os
 import sys
+from contextlib import nullcontext
 from datetime import datetime, timezone
 from pathlib import Path
 
+import dagshub
+import mlflow
 import pandas as pd
+from dotenv import load_dotenv
 from sklearn.compose import ColumnTransformer
 from sklearn.ensemble import RandomForestRegressor
 from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score
@@ -53,16 +58,16 @@ def load_and_prepare(csv_path: Path) -> pd.DataFrame:
     return df
 
 
-def evaluate(model: Pipeline, X_test: pd.DataFrame, y_test: pd.Series) -> dict:
+def evaluate(model: Pipeline, X_test: pd.DataFrame, y_test: pd.Series) -> dict[str, float]:
     y_pred = model.predict(X_test)
     return {
-        "rmse": round(float(mean_squared_error(y_test, y_pred) ** 0.5), 4),
-        "mae": round(float(mean_absolute_error(y_test, y_pred)), 4),
-        "r2": round(float(r2_score(y_test, y_pred)), 4),
+        "test_rmse": round(float(mean_squared_error(y_test, y_pred) ** 0.5), 4),
+        "test_mae": round(float(mean_absolute_error(y_test, y_pred)), 4),
+        "test_r2": round(float(r2_score(y_test, y_pred)), 4),
     }
 
 
-def save_artifacts(model: Pipeline, metrics: dict, models_dir: Path) -> None:
+def save_artifacts(model: Pipeline, metrics: dict[str, float], models_dir: Path) -> None:
     models_dir.mkdir(parents=True, exist_ok=True)
     timestamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
 
@@ -75,7 +80,27 @@ def save_artifacts(model: Pipeline, metrics: dict, models_dir: Path) -> None:
     print(f"Saved metrics: {metrics_path}")
 
 
+def _setup_mlflow() -> bool:
+    token = os.environ.get("DAGSHUB_TOKEN", "")
+    if not token:
+        return False
+
+    dagshub.init(  # type: ignore[reportPrivateImportUsage]
+        repo_owner=os.environ["DAGSHUB_REPO_OWNER"],
+        repo_name=os.environ["DAGSHUB_REPO_NAME"],
+    )
+    os.environ["MLFLOW_TRACKING_USERNAME"] = os.environ["DAGSHUB_REPO_OWNER"]
+    os.environ["MLFLOW_TRACKING_PASSWORD"] = token
+
+    mlflow.set_experiment("hevy-fti-predictor")
+    mlflow.sklearn.autolog()  # type: ignore[reportPrivateImportUsage]
+    return True
+
+
 def main() -> None:
+    load_dotenv()
+    use_mlflow = _setup_mlflow()
+
     features_path = find_latest_features(Path("data/processed"))
     print(f"Loading features from {features_path}")
     df = load_and_prepare(features_path)
@@ -84,8 +109,11 @@ def main() -> None:
     X = df[FEATURE_COLS]
     y = df[TARGET_COL]
 
-    X_train, X_test, y_train, y_test = train_test_split(
-        X, y, test_size=0.2, shuffle=False
+    from typing import cast
+
+    X_train, X_test, y_train, y_test = cast(
+        tuple[pd.DataFrame, pd.DataFrame, pd.Series, pd.Series],
+        train_test_split(X, y, test_size=0.2, shuffle=False),
     )
     print(
         f"Train: {len(X_train)} samples, Test: {len(X_test)} samples "
@@ -107,26 +135,31 @@ def main() -> None:
         ]
     )
 
-    print("Training RandomForestRegressor...")
-    pipeline.fit(X_train, y_train)
+    run_ctx = mlflow.start_run() if use_mlflow else nullcontext()
+    with run_ctx:
+        print("Training RandomForestRegressor...")
+        pipeline.fit(X_train, y_train)
 
-    metrics = evaluate(pipeline, X_test, y_test)
-    print("\n--- Evaluation ---")
-    print(f"RMSE: {metrics['rmse']:.2f} kg")
-    print(f"MAE:  {metrics['mae']:.2f} kg")
-    print(f"R²:   {metrics['r2']:.4f}")
+        metrics = evaluate(pipeline, X_test, y_test)
+        print("\n--- Evaluation ---")
+        print(f"RMSE: {metrics['test_rmse']:.2f} kg")
+        print(f"MAE:  {metrics['test_mae']:.2f} kg")
+        print(f"R²:   {metrics['test_r2']:.4f}")
 
-    feature_names = pipeline.named_steps["preprocessor"].get_feature_names_out()
-    importances = pipeline.named_steps["model"].feature_importances_
-    importance_df = (
-        pd.DataFrame({"feature": feature_names, "importance": importances})
-        .sort_values("importance", ascending=False)
-        .head(10)
-    )
-    print("\nTop 10 feature importances:")
-    print(importance_df.to_string(index=False))
+        if use_mlflow:
+            mlflow.log_metrics(metrics)
 
-    save_artifacts(pipeline, metrics, Path("models"))
+        feature_names = pipeline.named_steps["preprocessor"].get_feature_names_out()
+        importances = pipeline.named_steps["model"].feature_importances_
+        importance_df = (
+            pd.DataFrame({"feature": feature_names, "importance": importances})
+            .sort_values("importance", ascending=False)
+            .head(10)
+        )
+        print("\nTop 10 feature importances:")
+        print(importance_df.to_string(index=False))
+
+        save_artifacts(pipeline, metrics, Path("models"))
 
 
 if __name__ == "__main__":

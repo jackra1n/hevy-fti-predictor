@@ -24,6 +24,7 @@ jobs:
       - uses: astral-sh/setup-uv@v8.1.0
         with:
           python-version: '3.12'
+          enable-cache: false
 
       - run: uv sync
 

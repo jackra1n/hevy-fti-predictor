@@ -53,6 +53,9 @@ htmlcov/
 # uv
 uv.lock
 
+# Models
+models/
+
 # DVC
 .dvc/cache/
 .dvc/tmp/

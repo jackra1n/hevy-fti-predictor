@@ -1,9 +1,9 @@
 import json
 import os
-import sys
 from contextlib import nullcontext
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import cast
 
 import dagshub
 import mlflow
@@ -16,8 +16,6 @@ from sklearn.model_selection import train_test_split
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import OneHotEncoder, StandardScaler
 import joblib
-
-sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
 FEATURE_COLS = [
     "muscle_group",
@@ -112,8 +110,6 @@ def main() -> None:
     # convert integer columns to float64 to avoid MLflow schema enforcement warnings
     for col in X.select_dtypes(include=["int64"]).columns:
         X[col] = X[col].astype("float64")
-
-    from typing import cast
 
     X_train, X_test, y_train, y_test = cast(
         tuple[pd.DataFrame, pd.DataFrame, pd.Series, pd.Series],

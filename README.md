@@ -57,11 +57,44 @@ dvc pull                             # download from GCS
 
 Data is stored in a GCS bucket. [More info →](docs/gcs.md)
 
+## Environment Variables
+
+Create a `.env` file from the template:
+
+```bash
+cp example.env .env
+```
+
+| Variable | Required for | Description |
+|----------|--------------|-------------|
+| `HEVY_API_KEY` | Data fetch | Hevy API key |
+| `DAGSHUB_TOKEN` | Training | DagsHub access token ([get one here](https://dagshub.com/user/settings/tokens)) |
+| `DAGSHUB_REPO_OWNER` | Training | Your DagsHub username |
+| `DAGSHUB_REPO_NAME` | Training | Repository name on DagsHub |
+
+## Docker
+
+Build and run the training container locally:
+
+```bash
+docker build -t hevy-fti-predictor:train .
+docker run --rm \
+  -e DAGSHUB_TOKEN=<your_token> \
+  -e DAGSHUB_REPO_OWNER=jackra1n \
+  -e DAGSHUB_REPO_NAME=hevy-fti-predictor \
+  hevy-fti-predictor:train
+```
+
 ## CI/CD
 
-A GitHub Actions workflow (`.github/workflows/update-data.yml`) runs daily to fetch new Hevy workouts, compute features, and push updated data to GCS.
+Two GitHub Actions workflows run the FTI pipeline:
 
-Requires these **repository secrets** (Settings → Secrets and variables → Actions):
+| Workflow | File | Trigger | What it does |
+|----------|------|---------|--------------|
+| **Update Data** | `.github/workflows/update-data.yml` | Daily at 06:00 UTC | Fetches Hevy workouts, computes features, pushes data to GCS via DVC |
+| **Train Model** | `.github/workflows/train.yml` | After Update Data succeeds | Pulls latest data, builds Docker image, runs training, logs experiments to DagsHub MLflow |
+
+Requires these **repository secrets** (Settings → Secrets and variables → Secrets):
 
 | Secret | Description |
 |--------|-------------|
@@ -69,8 +102,16 @@ Requires these **repository secrets** (Settings → Secrets and variables → Ac
 | `GCP_PROJECT_ID` | GCP project ID |
 | `GCP_WORKLOAD_IDENTITY_PROVIDER` | WIF provider resource name |
 | `GCP_SERVICE_ACCOUNT` | SA email (`github-actions@<PROJECT>.iam.gserviceaccount.com`) |
+| `DAGSHUB_TOKEN` | DagsHub access token |
 
-See [docs/gcs.md](docs/gcs.md) for setup instructions.
+And these **repository variables** (Settings → Secrets and variables → Variables):
+
+| Variable | Description |
+|----------|-------------|
+| `DAGSHUB_REPO_OWNER` | Your DagsHub username |
+| `DAGSHUB_REPO_NAME` | Repository name on DagsHub |
+
+See [docs/gcs.md](docs/gcs.md) for GCP setup instructions.
 
 ## Tools
 

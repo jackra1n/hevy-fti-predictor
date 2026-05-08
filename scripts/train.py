@@ -93,7 +93,7 @@ def _setup_mlflow() -> bool:
     os.environ["MLFLOW_TRACKING_PASSWORD"] = token
 
     mlflow.set_experiment("hevy-fti-predictor")
-    mlflow.sklearn.autolog()  # type: ignore[reportPrivateImportUsage]
+    mlflow.sklearn.autolog(log_models=False)  # type: ignore[reportPrivateImportUsage]
     return True
 
 
@@ -106,8 +106,12 @@ def main() -> None:
     df = load_and_prepare(features_path)
     print(f"Loaded {len(df)} complete records after dropping NaN rows.")
 
-    X = df[FEATURE_COLS]
+    X = df[FEATURE_COLS].copy()
     y = df[TARGET_COL]
+
+    # convert integer columns to float64 to avoid MLflow schema enforcement warnings
+    for col in X.select_dtypes(include=["int64"]).columns:
+        X[col] = X[col].astype("float64")
 
     from typing import cast
 

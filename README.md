@@ -5,11 +5,15 @@ MLOps university project that fetches workout data from the [Hevy](https://hevy.
 ## Pipeline
 
 ```
-Hevy API → fetch_workouts.py → data/raw/ + data/processed/workouts_exercises.csv
-                                        ↓
-                              feature_engineering.py
-                                        ↓
-                              data/processed/features_*.csv
+Hevy API → fetch.py → data/raw/ + data/processed/workouts_exercises.csv
+                           ↓
+               feature_engineering.py
+                           ↓
+               data/processed/features_*.csv
+                           ↓
+                    train.py
+                           ↓
+               models/ + DagsHub MLflow
 ```
 
 **Features computed:** rolling volume per muscle group, days since last exercise, volume trends, session history, global workload (7d/28d), workout frequency, temporal features — 30 columns total.
@@ -34,8 +38,9 @@ dvc pull
 echo "HEVY_API_KEY=<your_key>" > .env
 
 # Run
-uv run scripts/fetch_workouts.py
-uv run src/feature_engineering.py
+uv run src/feature_pipeline/fetch.py
+uv run src/feature_pipeline/feature_engineering.py
+uv run src/training_pipeline/train.py
 ```
 
 ## Data Versioning

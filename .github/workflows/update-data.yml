@@ -31,11 +31,11 @@ jobs:
 
       - run: dvc pull
 
-      - run: uv run scripts/fetch_workouts.py
+      - run: uv run src/feature_pipeline/fetch.py
         env:
           HEVY_API_KEY: ${{ secrets.HEVY_API_KEY }}
 
-      - run: uv run src/feature_engineering.py
+      - run: uv run src/feature_pipeline/feature_engineering.py
 
       - run: |
           dvc add data/raw/ data/processed/

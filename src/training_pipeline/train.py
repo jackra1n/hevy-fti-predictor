@@ -5,7 +5,6 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import cast
 
-import dagshub
 import mlflow
 import pandas as pd
 from dotenv import load_dotenv
@@ -83,11 +82,11 @@ def _setup_mlflow() -> bool:
     if not token:
         return False
 
-    dagshub.init(  # type: ignore[reportPrivateImportUsage]
-        repo_owner=os.environ["DAGSHUB_REPO_OWNER"],
-        repo_name=os.environ["DAGSHUB_REPO_NAME"],
-    )
-    os.environ["MLFLOW_TRACKING_USERNAME"] = os.environ["DAGSHUB_REPO_OWNER"]
+    owner = os.environ["DAGSHUB_REPO_OWNER"]
+    repo = os.environ["DAGSHUB_REPO_NAME"]
+
+    os.environ["MLFLOW_TRACKING_URI"] = f"https://dagshub.com/{owner}/{repo}.mlflow"
+    os.environ["MLFLOW_TRACKING_USERNAME"] = owner
     os.environ["MLFLOW_TRACKING_PASSWORD"] = token
 
     mlflow.set_experiment("hevy-fti-predictor")

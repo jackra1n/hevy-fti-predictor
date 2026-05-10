@@ -5,6 +5,7 @@ description = "Add your description here"
 requires-python = ">=3.12"
 dependencies = [
     "dagshub>=0.7.0",
+    "joblib>=1.4.0",
     "mlflow>=2.16.0",
     "pandas>=2.2,<3",
     "pydantic>=2.13.3",

@@ -1,6 +1,10 @@
 # hevy-fti-predictor
 
-MLOps university project that fetches workout data from the [Hevy](https://hevy.com) API and builds a versioned feature store for downstream ML tasks.
+> *your gym data, but make it machine learning*
+
+A fully automated MLOps pipeline that pulls your workout history from [Hevy](https://hevy.com), engineers 30+ features from raw lift data, and trains models to predict future training loads — all versioned, containerized, and running on CI/CD.
+
+**Stack:** Python · DVC · MLflow (DagsHub) · Docker · GitHub Actions · GCS
 
 ## Pipeline
 

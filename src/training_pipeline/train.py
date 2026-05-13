@@ -11,7 +11,6 @@ from dotenv import load_dotenv
 from sklearn.compose import ColumnTransformer
 from sklearn.ensemble import RandomForestRegressor
 from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score
-from sklearn.model_selection import train_test_split
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import OneHotEncoder, StandardScaler
 import joblib
@@ -50,8 +49,9 @@ def find_latest_features(features_dir: Path) -> Path:
 
 def load_and_prepare(csv_path: Path) -> pd.DataFrame:
     df = pd.read_csv(csv_path)
-    df = df[FEATURE_COLS + [TARGET_COL]]
+    df = df[FEATURE_COLS + [TARGET_COL, "workout_date"]]
     df = df.dropna()
+    df["workout_date"] = pd.to_datetime(df["workout_date"])
     return df
 
 
@@ -64,7 +64,9 @@ def evaluate(model: Pipeline, X_test: pd.DataFrame, y_test: pd.Series) -> dict[s
     }
 
 
-def save_artifacts(model: Pipeline, metrics: dict[str, float], models_dir: Path) -> None:
+def save_artifacts(
+    model: Pipeline, metrics: dict[str, float], models_dir: Path, split_info: dict[str, str | int]
+) -> None:
     models_dir.mkdir(parents=True, exist_ok=True)
     timestamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
 
@@ -72,8 +74,9 @@ def save_artifacts(model: Pipeline, metrics: dict[str, float], models_dir: Path)
     joblib.dump(model, model_path)
     print(f"Saved model: {model_path}")
 
+    full_metrics = {**metrics, **split_info}
     metrics_path = models_dir / f"metrics_{timestamp}.json"
-    metrics_path.write_text(json.dumps(metrics, indent=2))
+    metrics_path.write_text(json.dumps(full_metrics, indent=2, default=str))
     print(f"Saved metrics: {metrics_path}")
 
 
@@ -103,21 +106,49 @@ def main() -> None:
     df = load_and_prepare(features_path)
     print(f"Loaded {len(df)} complete records after dropping NaN rows.")
 
-    X = df[FEATURE_COLS].copy()
-    y = df[TARGET_COL]
+    # walk-forward split: last 30 calendar days as test, everything before as train
+    max_date = cast(pd.Timestamp, df["workout_date"].max())
+    test_cutoff = max_date - pd.Timedelta(days=30)
+
+    train_df = df[df["workout_date"] <= test_cutoff]
+    test_df = df[df["workout_date"] > test_cutoff]
+
+    if len(test_df) < 30:
+        print(
+            f"WARNING: Test set only has {len(test_df)} rows "
+            f"({test_df['workout_date'].dt.date.nunique()} unique dates). "
+            "Consider gathering more recent data."
+        )
+
+    X_train = train_df[FEATURE_COLS].copy()
+    y_train = train_df[TARGET_COL]
+    X_test = test_df[FEATURE_COLS].copy()
+    y_test = test_df[TARGET_COL]
 
     # convert integer columns to float64 to avoid MLflow schema enforcement warnings
-    for col in X.select_dtypes(include=["int64"]).columns:
-        X[col] = X[col].astype("float64")
+    for col in X_train.select_dtypes(include=["int64"]).columns:
+        X_train[col] = X_train[col].astype("float64")
+        X_test[col] = X_test[col].astype("float64")
 
-    X_train, X_test, y_train, y_test = cast(
-        tuple[pd.DataFrame, pd.DataFrame, pd.Series, pd.Series],
-        train_test_split(X, y, test_size=0.2, shuffle=False),
-    )
+    train_start = train_df["workout_date"].min().strftime("%Y-%m-%d")
+    train_end = train_df["workout_date"].max().strftime("%Y-%m-%d")
+    test_start = test_df["workout_date"].min().strftime("%Y-%m-%d")
+    test_end = test_df["workout_date"].max().strftime("%Y-%m-%d")
+
     print(
-        f"Train: {len(X_train)} samples, Test: {len(X_test)} samples "
-        f"(time-based split, test=last 20%)"
+        f"Train: {len(X_train)} samples ({train_start} to {train_end}), "
+        f"Test: {len(X_test)} samples ({test_start} to {test_end}) "
+        f"(walk-forward, test=last 30 days)"
     )
+
+    split_info = {
+        "train_start_date": train_start,
+        "train_end_date": train_end,
+        "test_start_date": test_start,
+        "test_end_date": test_end,
+        "train_samples": len(X_train),
+        "test_samples": len(X_test),
+    }
 
     preprocessor = ColumnTransformer(
         [
@@ -147,6 +178,7 @@ def main() -> None:
 
         if use_mlflow:
             mlflow.log_metrics(metrics)
+            mlflow.log_params(split_info)
 
         feature_names = pipeline.named_steps["preprocessor"].get_feature_names_out()
         importances = pipeline.named_steps["model"].feature_importances_
@@ -158,7 +190,7 @@ def main() -> None:
         print("\nTop 10 feature importances:")
         print(importance_df.to_string(index=False))
 
-        save_artifacts(pipeline, metrics, Path("models"))
+        save_artifacts(pipeline, metrics, Path("models"), split_info)
 
 
 if __name__ == "__main__":

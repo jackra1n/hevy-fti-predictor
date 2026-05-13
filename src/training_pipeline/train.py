@@ -13,6 +13,7 @@ from sklearn.ensemble import RandomForestRegressor
 from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import OneHotEncoder, StandardScaler
+from mlflow.models.signature import infer_signature
 import joblib
 
 FEATURE_COLS = [
@@ -179,6 +180,10 @@ def main() -> None:
         if use_mlflow:
             mlflow.log_metrics(metrics)
             mlflow.log_params(split_info)
+            signature = infer_signature(X_train, y_train)
+            mlflow.sklearn.log_model(  # type: ignore[reportPrivateImportUsage]
+                pipeline, name="model", signature=signature
+            )
 
         feature_names = pipeline.named_steps["preprocessor"].get_feature_names_out()
         importances = pipeline.named_steps["model"].feature_importances_

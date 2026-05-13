@@ -182,7 +182,10 @@ def main() -> None:
             mlflow.log_params(split_info)
             signature = infer_signature(X_train, y_train)
             mlflow.sklearn.log_model(  # type: ignore[reportPrivateImportUsage]
-                pipeline, name="model", signature=signature
+                pipeline,
+                name="model",
+                signature=signature,
+                registered_model_name="hevy-fti-model",
             )
 
         feature_names = pipeline.named_steps["preprocessor"].get_feature_names_out()

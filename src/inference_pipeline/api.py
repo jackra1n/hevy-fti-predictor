@@ -10,13 +10,31 @@ import mlflow
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 
-from inference_pipeline.cli import get_last_session, list_exercises
+import pandas as pd
+
 from inference_pipeline.feature_provider import build_features_for_next_session
 from inference_pipeline.inference import predict
 
 MODEL: Any | None = None
 HISTORY_CSV = Path(os.environ.get("HISTORY_CSV_PATH", "data/processed/workouts_exercises.csv"))
 MODEL_URI = os.environ.get("MLFLOW_MODEL_URI", "models:/hevy-fti-model/latest")
+
+
+def _list_exercises(history_csv: Path) -> pd.DataFrame:
+    df = pd.read_csv(history_csv)
+    df["start_time"] = pd.to_datetime(df["start_time"], utc=True)
+    latest = df.groupby("exercise_name")["start_time"].max().reset_index()
+    latest = latest.sort_values("start_time", ascending=False).reset_index(drop=True)
+    return latest
+
+
+def _get_last_session(exercise_name: str, history_csv: Path) -> pd.Series:
+    df = pd.read_csv(history_csv)
+    df["start_time"] = pd.to_datetime(df["start_time"], utc=True)
+    exercise_df = df[df["exercise_name"] == exercise_name]
+    if len(exercise_df) == 0:
+        raise ValueError(f"No history for {exercise_name}")
+    return exercise_df.sort_values("start_time").iloc[-1]
 
 
 def _setup_mlflow() -> None:
@@ -60,7 +78,7 @@ def health() -> dict[str, str]:
 
 @app.get("/exercises")
 def exercises() -> list[dict[str, Any]]:
-    df = list_exercises(HISTORY_CSV)
+    df = _list_exercises(HISTORY_CSV)
     return [
         {"name": row["exercise_name"], "last_trained": row["start_time"].strftime("%Y-%m-%d")}
         for _, row in df.iterrows()
@@ -109,7 +127,7 @@ def predict_endpoint(req: PredictRequest) -> PredictResponse:
     predicted_volume = float(preds[0])
 
     try:
-        last = get_last_session(req.exercise_name, HISTORY_CSV)
+        last = _get_last_session(req.exercise_name, HISTORY_CSV)
     except ValueError:
         last = None
 

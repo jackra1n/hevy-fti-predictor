@@ -44,6 +44,7 @@ gcloud run deploy "$SERVICE_NAME" \
   --allow-unauthenticated \
   --memory "1Gi" \
   --cpu "1" \
+  --min-instances 1 \
   --max-instances 1 \
   --project="$PROJECT_ID"
 echo "Done."

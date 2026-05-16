@@ -75,6 +75,73 @@ _model_provider = ModelProvider(MODEL_URI)
 app = FastAPI(title="Hevy FTI Predictor")
 
 
+def _run_prediction(
+    exercise_name: str,
+    planned_time: datetime | None = None,
+) -> dict[str, Any]:
+    """Core prediction logic shared by single and batch endpoints."""
+    model = _model_provider.get()
+
+    try:
+        features_df = build_features_for_next_session(exercise_name, HISTORY_CSV, planned_time)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+    if features_df.isnull().any().any():
+        nan_cols = features_df.columns[features_df.isnull().any()].tolist()
+        raise HTTPException(
+            status_code=400,
+            detail=f"Not enough history for this exercise. Missing features: {', '.join(nan_cols)}",
+        )
+
+    preds = predict(model, features_df)
+    predicted_volume = float(preds[0])
+
+    try:
+        last = _get_last_session(exercise_name, HISTORY_CSV)
+    except ValueError:
+        last = None
+
+    if last is not None:
+        last_sets = int(last["total_sets"])
+        last_reps = int(last["total_reps"])
+        last_volume = float(last["total_volume_kg"])
+        last_date = last["start_time"].strftime("%Y-%m-%d")
+
+        if last_reps > 0:
+            estimated_weight = predicted_volume / last_reps
+            reps_per_set = last_reps / last_sets if last_sets > 0 else 0
+        else:
+            estimated_weight = None
+            reps_per_set = None
+    else:
+        last_sets = None
+        last_reps = None
+        last_volume = 0.0
+        last_date = ""
+        estimated_weight = None
+        reps_per_set = None
+
+    features_dict: dict[str, Any] = {
+        str(col): float(val) if isinstance(val, (int, float)) else str(val)
+        for col, val in features_df.iloc[0].items()
+    }
+
+    return {
+        "exercise_name": exercise_name,
+        "predicted_volume_kg": round(predicted_volume, 1),
+        "estimated_weight_kg": round(estimated_weight, 1) if estimated_weight else None,
+        "estimated_sets": last_sets,
+        "estimated_reps_per_set": round(reps_per_set, 1) if reps_per_set else None,
+        "last_session_date": last_date,
+        "last_session_volume_kg": round(last_volume, 1),
+        "features_used": features_dict,
+        "model_version": "hevy-fti-model:latest",
+    }
+
+
 @app.get("/health")
 def health() -> dict[str, str]:
     return {"status": "ok"}
@@ -108,65 +175,35 @@ class PredictResponse(BaseModel):
 
 @app.post("/predict", response_model=PredictResponse)
 def predict_endpoint(req: PredictRequest) -> PredictResponse:
-    model = _model_provider.get()
+    result = _run_prediction(req.exercise_name, req.planned_time)
+    return PredictResponse(**result)
 
-    try:
-        features_df = build_features_for_next_session(
-            req.exercise_name, HISTORY_CSV, req.planned_time
-        )
-    except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
-    except FileNotFoundError as e:
-        raise HTTPException(status_code=404, detail=str(e))
 
-    if features_df.isnull().any().any():
-        nan_cols = features_df.columns[features_df.isnull().any()].tolist()
-        raise HTTPException(
-            status_code=400,
-            detail=f"Not enough history for this exercise. Missing features: {', '.join(nan_cols)}",
-        )
+class BatchPredictRequest(BaseModel):
+    exercises: list[str]
+    planned_time: datetime | None = None
 
-    preds = predict(model, features_df)
-    predicted_volume = float(preds[0])
 
-    try:
-        last = _get_last_session(req.exercise_name, HISTORY_CSV)
-    except ValueError:
-        last = None
+class BatchPredictResponse(BaseModel):
+    predictions: list[PredictResponse]
 
-    if last is not None:
-        last_sets = int(last["total_sets"])
-        last_reps = int(last["total_reps"])
-        last_volume = float(last["total_volume_kg"])
-        last_date = last["start_time"].strftime("%Y-%m-%d")
 
-        if last_reps > 0:
-            estimated_weight = predicted_volume / last_reps
-            reps_per_set = last_reps / last_sets if last_sets > 0 else 0
-        else:
-            estimated_weight = None
-            reps_per_set = None
-    else:
-        last_sets = None
-        last_reps = None
-        last_volume = 0.0
-        last_date = ""
-        estimated_weight = None
-        reps_per_set = None
+@app.post("/predict/batch", response_model=BatchPredictResponse)
+def batch_predict_endpoint(req: BatchPredictRequest) -> BatchPredictResponse:
+    if not req.exercises:
+        raise HTTPException(status_code=400, detail="No exercises provided")
 
-    features_dict: dict[str, Any] = {
-        str(col): float(val) if isinstance(val, (int, float)) else str(val)
-        for col, val in features_df.iloc[0].items()
-    }
+    results: list[PredictResponse] = []
+    errors: list[str] = []
 
-    return PredictResponse(
-        exercise_name=req.exercise_name,
-        predicted_volume_kg=round(predicted_volume, 1),
-        estimated_weight_kg=round(estimated_weight, 1) if estimated_weight else None,
-        estimated_sets=last_sets,
-        estimated_reps_per_set=round(reps_per_set, 1) if reps_per_set else None,
-        last_session_date=last_date,
-        last_session_volume_kg=round(last_volume, 1),
-        features_used=features_dict,
-        model_version="hevy-fti-model:latest",
-    )
+    for name in req.exercises:
+        try:
+            result = _run_prediction(name, req.planned_time)
+            results.append(PredictResponse(**result))
+        except HTTPException as exc:
+            errors.append(f"{name}: {exc.detail}")
+
+    if errors and not results:
+        raise HTTPException(status_code=400, detail="; ".join(errors))
+
+    return BatchPredictResponse(predictions=results)

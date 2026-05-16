@@ -8,19 +8,10 @@ A fully automated MLOps pipeline that pulls your workout history from [Hevy](htt
 
 ## Pipeline
 
-```
-Hevy API → fetch.py → data/raw/ + data/processed/workouts_exercises.csv
-                           ↓
-               feature_engineering.py
-                           ↓
-               data/processed/features_*.csv
-                           ↓
-                    train.py
-                           ↓
-               models/ + DagsHub MLflow
-```
+![Project Overview](docs/images/project_overview.png)
 
-**Features computed:** rolling volume per muscle group, days since last exercise, volume trends, session history, global workload (7d/28d), workout frequency, temporal features - 30 columns total.
+
+**Features computed:** rolling volume per muscle group, days since last exercise, volume trends, session history, global workload (7d/28d), workout frequency, temporal features - 16 feature columns.
 
 ## Inference
 

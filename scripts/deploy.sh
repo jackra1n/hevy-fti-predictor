@@ -29,7 +29,8 @@ echo ""
 
 echo "[1/3] Building and pushing image via Cloud Build..."
 gcloud builds submit \
-  --tag "$IMAGE_URI" \
+  --config=cloudbuild.yaml \
+  --substitutions="_IMAGE_URI=${IMAGE_URI}" \
   --project="$PROJECT_ID"
 echo "Done."
 

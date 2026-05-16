@@ -19,4 +19,4 @@ ENV PORT=8080
 
 EXPOSE 8080
 
-CMD exec uv run uvicorn inference_pipeline.api:app --host 0.0.0.0 --port ${PORT:-8080}
+CMD exec uv run --no-dev uvicorn inference_pipeline.api:app --host 0.0.0.0 --port ${PORT:-8080}

@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import os
 import threading
+import time
+import traceback
 from datetime import datetime
 from pathlib import Path
 from typing import Any
@@ -61,22 +63,40 @@ class ModelProvider:
         self._model: Any | None = None
         self._lock = threading.Lock()
         self._ready = threading.Event()
+        self._load_error: str | None = None
 
     def load(self) -> None:
-        """download and cache the model. called once in a background thread"""
+        """download and cache the model with retries. called once in a background thread"""
         with self._lock:
             if self._model is not None:
                 self._ready.set()
                 return
             _setup_mlflow()
-            print(f"Loading model from MLflow registry: {self._model_uri}")
-            self._model = mlflow.sklearn.load_model(self._model_uri)  # type: ignore[reportPrivateImportUsage]
-            print("Model loaded successfully")
+
+            max_retries = 5
+            base_delay = 2
+            for attempt in range(max_retries):
+                try:
+                    print(f"Loading model from MLflow registry: {self._model_uri} (attempt {attempt + 1}/{max_retries})")
+                    self._model = mlflow.sklearn.load_model(self._model_uri)  # type: ignore[reportPrivateImportUsage]
+                    print("Model loaded successfully")
+                    self._ready.set()
+                    return
+                except Exception:
+                    delay = base_delay * (2 ** attempt)
+                    print(f"Failed to load model (attempt {attempt + 1}/{max_retries}), retrying in {delay}s…")
+                    traceback.print_exc()
+                    time.sleep(delay)
+
+            self._load_error = f"Failed to load model after {max_retries} attempts"
+            print(f"FATAL: {self._load_error}")
             self._ready.set()
 
     def get(self) -> Any:
         """return the cached model, blocking until it is ready"""
         self._ready.wait()
+        if self._model is None:
+            raise RuntimeError(self._load_error or "Model failed to load")
         return self._model
 
     def is_ready(self) -> bool:

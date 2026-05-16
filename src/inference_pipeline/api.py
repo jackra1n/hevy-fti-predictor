@@ -1,21 +1,21 @@
 from __future__ import annotations
 
 import os
-from contextlib import asynccontextmanager
+import threading
 from datetime import datetime
 from pathlib import Path
 from typing import Any
 
 import mlflow
+import pandas as pd
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
-
-import pandas as pd
 
 from inference_pipeline.feature_provider import build_features_for_next_session
 from inference_pipeline.inference import predict
 
-MODEL: Any | None = None
+_MODEL: Any | None = None
+_MODEL_LOCK = threading.Lock()
 HISTORY_CSV = Path(os.environ.get("HISTORY_CSV_PATH", "data/processed/workouts_exercises.csv"))
 MODEL_URI = os.environ.get("MLFLOW_MODEL_URI", "models:/hevy-fti-model/latest")
 
@@ -50,30 +50,27 @@ def _setup_mlflow() -> None:
     os.environ["MLFLOW_TRACKING_PASSWORD"] = token
 
 
-def load_model_from_mlflow() -> Any:
-    _setup_mlflow()
-    print(f"Loading model from MLflow registry: {MODEL_URI}")
-    model = mlflow.sklearn.load_model(MODEL_URI)  # type: ignore[reportPrivateImportUsage]
-    print("Model loaded successfully")
-    return model
+def _load_model_once() -> Any:
+    global _MODEL
+    if _MODEL is not None:
+        return _MODEL
+
+    with _MODEL_LOCK:
+        if _MODEL is not None:
+            return _MODEL
+        _setup_mlflow()
+        print(f"Loading model from MLflow registry: {MODEL_URI}")
+        _MODEL = mlflow.sklearn.load_model(MODEL_URI)  # type: ignore[reportPrivateImportUsage]
+        print("Model loaded successfully")
+        return _MODEL
 
 
-@asynccontextmanager
-async def lifespan(app: FastAPI):
-    global MODEL
-    MODEL = load_model_from_mlflow()
-    if not HISTORY_CSV.exists():
-        raise RuntimeError(f"History CSV not found: {HISTORY_CSV}")
-    yield
-    MODEL = None
-
-
-app = FastAPI(title="Hevy FTI Predictor", lifespan=lifespan)
+app = FastAPI(title="Hevy FTI Predictor")
 
 
 @app.get("/health")
 def health() -> dict[str, str]:
-    return {"status": "ok", "model_loaded": "yes" if MODEL is not None else "no"}
+    return {"status": "ok"}
 
 
 @app.get("/exercises")
@@ -104,8 +101,7 @@ class PredictResponse(BaseModel):
 
 @app.post("/predict", response_model=PredictResponse)
 def predict_endpoint(req: PredictRequest) -> PredictResponse:
-    if MODEL is None:
-        raise HTTPException(status_code=503, detail="Model not loaded")
+    model = _load_model_once()
 
     try:
         features_df = build_features_for_next_session(
@@ -123,7 +119,7 @@ def predict_endpoint(req: PredictRequest) -> PredictResponse:
             detail=f"Not enough history for this exercise. Missing features: {', '.join(nan_cols)}",
         )
 
-    preds = predict(MODEL, features_df)
+    preds = predict(model, features_df)
     predicted_volume = float(preds[0])
 
     try:

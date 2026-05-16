@@ -11,7 +11,10 @@ import pandas as pd
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 
-from inference_pipeline.feature_provider import build_features_for_next_session
+from inference_pipeline.feature_provider import (
+    build_features_for_batch,
+    build_features_for_next_session,
+)
 from inference_pipeline.inference import predict
 
 HISTORY_CSV = Path(os.environ.get("HISTORY_CSV_PATH", "data/processed/workouts_exercises.csv"))
@@ -90,17 +93,10 @@ app = FastAPI(title="Hevy FTI Predictor")
 
 def _run_prediction(
     exercise_name: str,
-    planned_time: datetime | None = None,
+    features_df: pd.DataFrame,
 ) -> dict[str, Any]:
-    """Core prediction logic shared by single and batch endpoints."""
+    """Core prediction logic given pre-built features."""
     model = _model_provider.get()
-
-    try:
-        features_df = build_features_for_next_session(exercise_name, HISTORY_CSV, planned_time)
-    except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
-    except FileNotFoundError as exc:
-        raise HTTPException(status_code=404, detail=str(exc)) from exc
 
     if features_df.isnull().any().any():
         nan_cols = features_df.columns[features_df.isnull().any()].tolist()
@@ -191,7 +187,16 @@ class PredictResponse(BaseModel):
 
 @app.post("/predict", response_model=PredictResponse)
 def predict_endpoint(req: PredictRequest) -> PredictResponse:
-    result = _run_prediction(req.exercise_name, req.planned_time)
+    try:
+        features_df = build_features_for_next_session(
+            req.exercise_name, HISTORY_CSV, req.planned_time
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+    result = _run_prediction(req.exercise_name, features_df)
     return PredictResponse(**result)
 
 
@@ -209,12 +214,22 @@ def batch_predict_endpoint(req: BatchPredictRequest) -> BatchPredictResponse:
     if not req.exercises:
         raise HTTPException(status_code=400, detail="No exercises provided")
 
+    try:
+        all_features = build_features_for_batch(
+            req.exercises, HISTORY_CSV, req.planned_time
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
     results: list[PredictResponse] = []
     errors: list[str] = []
 
     for name in req.exercises:
         try:
-            result = _run_prediction(name, req.planned_time)
+            features_df = all_features[name]
+            result = _run_prediction(name, features_df)
             results.append(PredictResponse(**result))
         except HTTPException as exc:
             errors.append(f"{name}: {exc.detail}")

@@ -43,7 +43,7 @@ gcloud run deploy "$SERVICE_NAME" \
   --set-env-vars "DAGSHUB_TOKEN=${DAGSHUB_TOKEN},DAGSHUB_REPO_OWNER=jackra1n,DAGSHUB_REPO_NAME=hevy-fti-predictor" \
   --allow-unauthenticated \
   --memory "1Gi" \
-  --cpu "1" \
+  --cpu "2" \
   --min-instances 1 \
   --max-instances 1 \
   --project="$PROJECT_ID"

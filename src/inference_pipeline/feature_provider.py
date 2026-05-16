@@ -1,12 +1,14 @@
 from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
-from pathlib import Path
 from typing import Any
 
 import pandas as pd
 
-from inference_pipeline.feature_store import get_feature_store
+try:
+    from .feature_store import get_feature_store
+except ImportError:
+    from feature_store import get_feature_store  # type: ignore[no-redef]
 
 FEATURE_COLS = [
     "muscle_group",
@@ -131,7 +133,6 @@ def _compute_phantom_features(
 
 def build_features_for_next_session(
     exercise_name: str,
-    history_csv: Path = Path("data/processed/workouts_exercises.csv"),
     planned_time: datetime | None = None,
 ) -> pd.DataFrame:
     if planned_time is None:
@@ -147,7 +148,6 @@ def build_features_for_next_session(
 
 def build_features_for_batch(
     exercise_names: list[str],
-    history_csv: Path = Path("data/processed/workouts_exercises.csv"),
     planned_time: datetime | None = None,
 ) -> dict[str, pd.DataFrame]:
     if planned_time is None:

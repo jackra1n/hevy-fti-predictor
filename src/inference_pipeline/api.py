@@ -189,7 +189,7 @@ class PredictResponse(BaseModel):
 def predict_endpoint(req: PredictRequest) -> PredictResponse:
     try:
         features_df = build_features_for_next_session(
-            req.exercise_name, Path("data/processed/workouts_exercises.csv"), req.planned_time
+            req.exercise_name, req.planned_time
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
@@ -216,7 +216,7 @@ def batch_predict_endpoint(req: BatchPredictRequest) -> BatchPredictResponse:
 
     try:
         all_features = build_features_for_batch(
-            req.exercises, Path("data/processed/workouts_exercises.csv"), req.planned_time
+            req.exercises, req.planned_time
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc

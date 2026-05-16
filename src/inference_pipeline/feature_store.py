@@ -94,17 +94,17 @@ class FeatureStoreCache:
         return self._ready.is_set()
 
 
-_store: FeatureStoreCache | None = None
+class _StoreHolder:
+    _store: FeatureStoreCache | None = None
 
 
 def set_feature_store(store: FeatureStoreCache) -> None:
-    global _store
-    _store = store
+    _StoreHolder._store = store
 
 
 def get_feature_store() -> FeatureStoreCache:
-    if _store is None:
+    if _StoreHolder._store is None:
         raise RuntimeError(
             "Feature store not initialized. Call set_feature_store() first."
         )
-    return _store
+    return _StoreHolder._store

@@ -14,8 +14,6 @@ from pydantic import BaseModel
 from inference_pipeline.feature_provider import build_features_for_next_session
 from inference_pipeline.inference import predict
 
-_MODEL: Any | None = None
-_MODEL_LOCK = threading.Lock()
 HISTORY_CSV = Path(os.environ.get("HISTORY_CSV_PATH", "data/processed/workouts_exercises.csv"))
 MODEL_URI = os.environ.get("MLFLOW_MODEL_URI", "models:/hevy-fti-model/latest")
 
@@ -50,20 +48,29 @@ def _setup_mlflow() -> None:
     os.environ["MLFLOW_TRACKING_PASSWORD"] = token
 
 
-def _load_model_once() -> Any:
-    global _MODEL
-    if _MODEL is not None:
-        return _MODEL
+class ModelProvider:
+    """Lazy, thread-safe model loader from MLflow registry."""
 
-    with _MODEL_LOCK:
-        if _MODEL is not None:
-            return _MODEL
-        _setup_mlflow()
-        print(f"Loading model from MLflow registry: {MODEL_URI}")
-        _MODEL = mlflow.sklearn.load_model(MODEL_URI)  # type: ignore[reportPrivateImportUsage]
-        print("Model loaded successfully")
-        return _MODEL
+    def __init__(self, model_uri: str) -> None:
+        self._model_uri = model_uri
+        self._model: Any | None = None
+        self._lock = threading.Lock()
 
+    def get(self) -> Any:
+        if self._model is not None:
+            return self._model
+
+        with self._lock:
+            if self._model is not None:
+                return self._model
+            _setup_mlflow()
+            print(f"Loading model from MLflow registry: {self._model_uri}")
+            self._model = mlflow.sklearn.load_model(self._model_uri)  # type: ignore[reportPrivateImportUsage]
+            print("Model loaded successfully")
+            return self._model
+
+
+_model_provider = ModelProvider(MODEL_URI)
 
 app = FastAPI(title="Hevy FTI Predictor")
 
@@ -101,7 +108,7 @@ class PredictResponse(BaseModel):
 
 @app.post("/predict", response_model=PredictResponse)
 def predict_endpoint(req: PredictRequest) -> PredictResponse:
-    model = _load_model_once()
+    model = _model_provider.get()
 
     try:
         features_df = build_features_for_next_session(

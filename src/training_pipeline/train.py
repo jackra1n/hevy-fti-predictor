@@ -168,6 +168,11 @@ def main() -> None:
 
     run_ctx = mlflow.start_run() if use_mlflow else nullcontext()
     with run_ctx:
+        if use_mlflow:
+            commit = os.environ.get("GIT_COMMIT", "")
+            if commit:
+                mlflow.set_tag("mlflow.source.git.commit", commit)
+
         print("Training RandomForestRegressor...")
         pipeline.fit(X_train, y_train)
 

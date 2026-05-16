@@ -40,4 +40,5 @@ jobs:
             -e DAGSHUB_TOKEN=${{ secrets.DAGSHUB_TOKEN }} \
             -e DAGSHUB_REPO_OWNER=${{ vars.DAGSHUB_REPO_OWNER }} \
             -e DAGSHUB_REPO_NAME=${{ vars.DAGSHUB_REPO_NAME }} \
+            -e GIT_COMMIT=${{ github.sha }} \
             hevy-fti-predictor:train

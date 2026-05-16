@@ -49,28 +49,41 @@ def _setup_mlflow() -> None:
 
 
 class ModelProvider:
-    """Lazy, thread-safe model loader from MLflow registry."""
+    """Thread-safe model loader from MLflow registry."""
 
     def __init__(self, model_uri: str) -> None:
         self._model_uri = model_uri
         self._model: Any | None = None
         self._lock = threading.Lock()
+        self._ready = threading.Event()
 
-    def get(self) -> Any:
-        if self._model is not None:
-            return self._model
-
+    def load(self) -> None:
+        """Download and cache the model. Called once in a background thread."""
         with self._lock:
             if self._model is not None:
-                return self._model
+                self._ready.set()
+                return
             _setup_mlflow()
             print(f"Loading model from MLflow registry: {self._model_uri}")
             self._model = mlflow.sklearn.load_model(self._model_uri)  # type: ignore[reportPrivateImportUsage]
             print("Model loaded successfully")
-            return self._model
+            self._ready.set()
+
+    def get(self) -> Any:
+        """Return the cached model, blocking until it is ready."""
+        self._ready.wait()
+        return self._model
+
+    def is_ready(self) -> bool:
+        return self._ready.is_set()
 
 
 _model_provider = ModelProvider(MODEL_URI)
+
+# Start downloading the model in a background thread immediately on import.
+# With --min-instances 1 the container stays warm and the model is already
+# loaded when the first request arrives.
+threading.Thread(target=_model_provider.load, daemon=True).start()
 
 app = FastAPI(title="Hevy FTI Predictor")
 
@@ -143,8 +156,11 @@ def _run_prediction(
 
 
 @app.get("/health")
-def health() -> dict[str, str]:
-    return {"status": "ok"}
+def health() -> dict[str, Any]:
+    return {
+        "status": "ok",
+        "model_ready": _model_provider.is_ready(),
+    }
 
 
 @app.get("/exercises")

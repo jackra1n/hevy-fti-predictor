@@ -4,7 +4,7 @@
 
 A fully automated MLOps pipeline that pulls your workout history from [Hevy](https://hevy.com), engineers 30+ features from raw lift data, and trains models to predict future training loads — all versioned, containerized, and running on CI/CD.
 
-**Stack:** Python · DVC · MLflow (DagsHub) · Docker · GitHub Actions · GCS
+**Stack:** Python · FastAPI · DVC · MLflow (DagsHub) · Docker · Cloud Run · GitHub Actions · GCS
 
 ## Pipeline
 
@@ -21,6 +21,27 @@ Hevy API → fetch.py → data/raw/ + data/processed/workouts_exercises.csv
 ```
 
 **Features computed:** rolling volume per muscle group, days since last exercise, volume trends, session history, global workload (7d/28d), workout frequency, temporal features — 30 columns total.
+
+## Inference
+
+The trained model is served via a **FastAPI** app containerized and deployed to **Google Cloud Run**.
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/health` | GET | Health check |
+| `/exercises` | GET | List available exercises from history |
+| `/predict` | POST | Predict volume for a single exercise |
+| `/predict/batch` | POST | Predict volume for multiple exercises at once |
+
+**Deploy:**
+
+```bash
+./scripts/setup-gcp.sh        # one-time GCP setup
+./scripts/set-permissions.sh  # one-time IAM permissions
+./scripts/deploy.sh           # build & deploy
+```
+
+See [docs/inference.md](docs/inference.md) for the full guide.
 
 ## Quickstart
 
@@ -78,7 +99,14 @@ cp example.env .env
 
 ## Docker
 
-Build and run the training container locally:
+Two Dockerfiles are provided:
+
+| File | Purpose |
+|------|---------|
+| `Dockerfile` | Training pipeline |
+| `Dockerfile.serve` | FastAPI inference server |
+
+**Training:**
 
 ```bash
 docker build -t hevy-fti-predictor:train .
@@ -87,6 +115,17 @@ docker run --rm \
   -e DAGSHUB_REPO_OWNER=jackra1n \
   -e DAGSHUB_REPO_NAME=hevy-fti-predictor \
   hevy-fti-predictor:train
+```
+
+**Inference (local):**
+
+```bash
+docker build -f Dockerfile.serve -t hevy-fti-predictor:inference .
+docker run --rm -p 8080:8080 \
+  -e DAGSHUB_TOKEN=<your_token> \
+  -e DAGSHUB_REPO_OWNER=jackra1n \
+  -e DAGSHUB_REPO_NAME=hevy-fti-predictor \
+  hevy-fti-predictor:inference
 ```
 
 ## CI/CD

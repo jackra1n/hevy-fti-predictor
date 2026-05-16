@@ -97,3 +97,17 @@ gcloud is managed through mise:
 [tools]
 gcloud = "latest"
 ```
+
+## Cloud Run
+
+The inference API is deployed to Cloud Run. The following APIs must be enabled:
+
+- `run.googleapis.com`
+- `artifactregistry.googleapis.com`
+- `cloudbuild.googleapis.com`
+
+Run `./scripts/setup-gcp.sh` to enable them automatically.
+
+The deploy script (`./scripts/deploy.sh`) uses Google Cloud Build to build the inference image (via `cloudbuild.yaml`) and pushes it to Artifact Registry before deploying to Cloud Run.
+
+See [inference.md](inference.md) for the full inference deployment guide.

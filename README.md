@@ -137,6 +137,12 @@ Two GitHub Actions workflows run the FTI pipeline:
 | **Update Data** | `.github/workflows/update-data.yml` | Daily at 06:00 UTC | Fetches Hevy workouts, computes features, pushes data to GCS via DVC |
 | **Train Model** | `.github/workflows/train.yml` | After Update Data succeeds | Pulls latest data, builds Docker image, runs training, logs experiments to DagsHub MLflow |
 
+A third workflow handles inference deployment:
+
+| Workflow | File | Trigger | What it does |
+|----------|------|---------|--------------|
+| **Deploy Inference** | `.github/workflows/deploy.yml` | After Train Model succeeds | Pulls latest feature store, builds inference Docker image, deploys to Cloud Run |
+
 Requires these **repository secrets** (Settings → Secrets and variables → Secrets):
 
 | Secret | Description |

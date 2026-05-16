@@ -110,4 +110,27 @@ Run `./scripts/setup-gcp.sh` to enable them automatically.
 
 The deploy script (`./scripts/deploy.sh`) uses Google Cloud Build to build the inference image (via `cloudbuild.yaml`) and pushes it to Artifact Registry before deploying to Cloud Run.
 
+### CI/CD Deployment
+
+The `.github/workflows/deploy.yml` workflow automatically deploys the inference service after every successful training run. For this to work, the GitHub Actions service account needs two additional IAM roles beyond the Storage Object Admin role already granted:
+
+| Role | Purpose |
+|------|---------|
+| `roles/cloudbuild.builds.editor` | Submit builds to Cloud Build |
+| `roles/run.admin` | Deploy services to Cloud Run |
+
+Grant them via the Google Cloud Console (**IAM & Admin → IAM**) or with `gcloud`:
+
+```bash
+WIF_SA="github-actions@<PROJECT>.iam.gserviceaccount.com"
+
+gcloud projects add-iam-policy-binding <PROJECT_ID> \
+  --member="serviceAccount:${WIF_SA}" \
+  --role="roles/cloudbuild.builds.editor"
+
+gcloud projects add-iam-policy-binding <PROJECT_ID> \
+  --member="serviceAccount:${WIF_SA}" \
+  --role="roles/run.admin"
+```
+
 See [inference.md](inference.md) for the full inference deployment guide.

@@ -15,27 +15,29 @@ from inference_pipeline.feature_provider import (
     build_features_for_batch,
     build_features_for_next_session,
 )
+from inference_pipeline.feature_store import FeatureStoreCache, set_feature_store
 from inference_pipeline.inference import predict
 
-HISTORY_CSV = Path(os.environ.get("HISTORY_CSV_PATH", "data/processed/workouts_exercises.csv"))
+PROCESSED_DIR = Path(os.environ.get("PROCESSED_DIR", "data/processed"))
 MODEL_URI = os.environ.get("MLFLOW_MODEL_URI", "models:/hevy-fti-model/latest")
 
+_feature_store = FeatureStoreCache(PROCESSED_DIR)
+set_feature_store(_feature_store)
 
-def _list_exercises(history_csv: Path) -> pd.DataFrame:
-    df = pd.read_csv(history_csv)
-    df["start_time"] = pd.to_datetime(df["start_time"], utc=True)
+
+def _list_exercises() -> pd.DataFrame:
+    df = _feature_store.get()
     latest = df.groupby("exercise_name")["start_time"].max().reset_index()
     latest = latest.sort_values("start_time", ascending=False).reset_index(drop=True)
     return latest
 
 
-def _get_last_session(exercise_name: str, history_csv: Path) -> pd.Series:
-    df = pd.read_csv(history_csv)
-    df["start_time"] = pd.to_datetime(df["start_time"], utc=True)
+def _get_last_session(exercise_name: str) -> pd.Series | None:
+    df = _feature_store.get()
     exercise_df = df[df["exercise_name"] == exercise_name]
     if len(exercise_df) == 0:
-        raise ValueError(f"No history for {exercise_name}")
-    return exercise_df.sort_values("start_time").iloc[-1]
+        return None
+    return exercise_df.iloc[-1]
 
 
 def _setup_mlflow() -> None:
@@ -52,7 +54,7 @@ def _setup_mlflow() -> None:
 
 
 class ModelProvider:
-    """Thread-safe model loader from MLflow registry."""
+    """thread-safe model loader from MLflow registry"""
 
     def __init__(self, model_uri: str) -> None:
         self._model_uri = model_uri
@@ -61,7 +63,7 @@ class ModelProvider:
         self._ready = threading.Event()
 
     def load(self) -> None:
-        """Download and cache the model. Called once in a background thread."""
+        """download and cache the model. called once in a background thread"""
         with self._lock:
             if self._model is not None:
                 self._ready.set()
@@ -73,7 +75,7 @@ class ModelProvider:
             self._ready.set()
 
     def get(self) -> Any:
-        """Return the cached model, blocking until it is ready."""
+        """return the cached model, blocking until it is ready"""
         self._ready.wait()
         return self._model
 
@@ -83,10 +85,11 @@ class ModelProvider:
 
 _model_provider = ModelProvider(MODEL_URI)
 
-# Start downloading the model in a background thread immediately on import.
-# With --min-instances 1 the container stays warm and the model is already
-# loaded when the first request arrives.
+# start downloading the model and loading the feature store in background
+# threads immediately on import.  with --min-instances 1 the container
+# stays warm and everything is ready when the first request arrives.
 threading.Thread(target=_model_provider.load, daemon=True).start()
+threading.Thread(target=_feature_store.load, daemon=True).start()
 
 app = FastAPI(title="Hevy FTI Predictor")
 
@@ -95,7 +98,6 @@ def _run_prediction(
     exercise_name: str,
     features_df: pd.DataFrame,
 ) -> dict[str, Any]:
-    """Core prediction logic given pre-built features."""
     model = _model_provider.get()
 
     if features_df.isnull().any().any():
@@ -108,10 +110,7 @@ def _run_prediction(
     preds = predict(model, features_df)
     predicted_volume = float(preds[0])
 
-    try:
-        last = _get_last_session(exercise_name, HISTORY_CSV)
-    except ValueError:
-        last = None
+    last = _get_last_session(exercise_name)
 
     if last is not None:
         last_sets = int(last["total_sets"])
@@ -156,12 +155,13 @@ def health() -> dict[str, Any]:
     return {
         "status": "ok",
         "model_ready": _model_provider.is_ready(),
+        "feature_store_ready": _feature_store.is_ready(),
     }
 
 
 @app.get("/exercises")
 def exercises() -> list[dict[str, Any]]:
-    df = _list_exercises(HISTORY_CSV)
+    df = _list_exercises()
     return [
         {"name": row["exercise_name"], "last_trained": row["start_time"].strftime("%Y-%m-%d")}
         for _, row in df.iterrows()
@@ -189,7 +189,7 @@ class PredictResponse(BaseModel):
 def predict_endpoint(req: PredictRequest) -> PredictResponse:
     try:
         features_df = build_features_for_next_session(
-            req.exercise_name, HISTORY_CSV, req.planned_time
+            req.exercise_name, Path("data/processed/workouts_exercises.csv"), req.planned_time
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
@@ -216,7 +216,7 @@ def batch_predict_endpoint(req: BatchPredictRequest) -> BatchPredictResponse:
 
     try:
         all_features = build_features_for_batch(
-            req.exercises, HISTORY_CSV, req.planned_time
+            req.exercises, Path("data/processed/workouts_exercises.csv"), req.planned_time
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc

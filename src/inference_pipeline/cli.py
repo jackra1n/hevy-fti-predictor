@@ -8,6 +8,9 @@ import pandas as pd
 
 from inference import load_model, predict
 from feature_provider import build_features_for_next_session
+from feature_store import FeatureStoreCache, set_feature_store
+
+FEATURE_STORE_DIR = Path("data/processed")
 
 
 def list_exercises(history_csv: Path = Path("data/processed/workouts_exercises.csv")) -> pd.DataFrame:
@@ -28,6 +31,11 @@ def get_last_session(exercise_name: str, history_csv: Path = Path("data/processe
 
 
 def main() -> None:
+    # initialize the feature store so build_features_for_next_session works
+    store = FeatureStoreCache(FEATURE_STORE_DIR)
+    set_feature_store(store)
+    store.load()
+
     model = load_model()
 
     print("Loading workout history...")

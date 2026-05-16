@@ -6,7 +6,7 @@ COPY pyproject.toml uv.lock ./
 RUN uv sync --no-dev
 
 COPY src/ ./src/
-COPY data/processed/workouts_exercises.csv ./data/processed/workouts_exercises.csv
+COPY data/processed/ ./data/processed/
 
 RUN groupadd -r appuser && useradd -r -g appuser appuser
 RUN chown -R appuser:appuser /app

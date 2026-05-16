@@ -112,25 +112,41 @@ The deploy script (`./scripts/deploy.sh`) uses Google Cloud Build to build the i
 
 ### CI/CD Deployment
 
-The `.github/workflows/deploy.yml` workflow automatically deploys the inference service after every successful training run. For this to work, the GitHub Actions service account needs two additional IAM roles beyond the Storage Object Admin role already granted:
+The `.github/workflows/deploy.yml` workflow automatically deploys the inference service after every successful training run. It builds the Docker image directly on the GitHub Actions runner and pushes it to Artifact Registry — no Cloud Build required. The WIF service account needs these additional IAM roles beyond the Storage Object Admin role already granted:
 
-| Role | Purpose |
-|------|---------|
-| `roles/cloudbuild.builds.editor` | Submit builds to Cloud Build |
-| `roles/run.admin` | Deploy services to Cloud Run |
+| Role | Scope | Purpose |
+|------|-------|---------|
+| `roles/storage.objectAdmin` | Project | DVC push/pull to GCS |
+| `roles/artifactregistry.writer` | Project | Push Docker images |
+| `roles/run.admin` | Project | Deploy to Cloud Run |
+| `roles/iam.serviceAccountUser` | Compute SA | Let Cloud Run use the Compute SA |
 
-Grant them via the Google Cloud Console (**IAM & Admin → IAM**) or with `gcloud`:
+Grant the project-level roles:
 
 ```bash
 WIF_SA="github-actions@<PROJECT>.iam.gserviceaccount.com"
 
 gcloud projects add-iam-policy-binding <PROJECT_ID> \
   --member="serviceAccount:${WIF_SA}" \
-  --role="roles/cloudbuild.builds.editor"
+  --role="roles/storage.objectAdmin"
+
+gcloud projects add-iam-policy-binding <PROJECT_ID> \
+  --member="serviceAccount:${WIF_SA}" \
+  --role="roles/artifactregistry.writer"
 
 gcloud projects add-iam-policy-binding <PROJECT_ID> \
   --member="serviceAccount:${WIF_SA}" \
   --role="roles/run.admin"
+```
+
+Grant the Compute SA binding:
+
+```bash
+COMPUTE_SA="389703270212-compute@developer.gserviceaccount.com"
+
+gcloud iam service-accounts add-iam-policy-binding "${COMPUTE_SA}" \
+  --member="serviceAccount:${WIF_SA}" \
+  --role="roles/iam.serviceAccountUser"
 ```
 
 See [inference.md](inference.md) for the full inference deployment guide.

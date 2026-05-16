@@ -20,7 +20,7 @@ Hevy API → fetch.py → data/raw/ + data/processed/workouts_exercises.csv
                models/ + DagsHub MLflow
 ```
 
-**Features computed:** rolling volume per muscle group, days since last exercise, volume trends, session history, global workload (7d/28d), workout frequency, temporal features — 30 columns total.
+**Features computed:** rolling volume per muscle group, days since last exercise, volume trends, session history, global workload (7d/28d), workout frequency, temporal features - 30 columns total.
 
 ## Inference
 

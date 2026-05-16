@@ -45,7 +45,7 @@ def main() -> None:
     print("Pick an exercise to predict next session volume:")
     for i, row in exercises.iterrows():
         date_str = row["start_time"].strftime("%Y-%m-%d")
-        print(f"  {cast(int, i) + 1}. {row['exercise_name']} — last trained: {date_str}")
+        print(f"  {cast(int, i) + 1}. {row['exercise_name']} - last trained: {date_str}")
 
     while True:
         try:

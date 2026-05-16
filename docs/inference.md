@@ -9,31 +9,39 @@ User Request
     ↓
 Cloud Run (FastAPI)
     ↓
-MLflow Model Registry (DagsHub)  ← loads model at first request
+Pre-computed Feature Store (features_*.csv)  ← loaded at startup
     ↓
-Prediction + feature engineering
+Phantom feature computation (O(1))
+    ↓
+MLflow Model Registry (DagsHub)  ← loaded at startup
+    ↓
+Prediction
     ↓
 JSON Response
 ```
 
-The model is loaded **lazily** on the first prediction request and kept in memory for the lifetime of the container instance. Cloud Run is configured with `--min-instances 1` so one instance is always warm, avoiding cold-start latency.
+The model and pre-computed feature store are loaded in **background threads at import time**, so they are ready before the first request arrives. Cloud Run is configured with `--min-instances 1` so one instance is always warm, avoiding cold-start latency.
+
+This follows the FTI architecture: the **Feature Pipeline** (GitHub Actions) computes features and pushes them to GCS via DVC. The **Inference Pipeline** pulls the latest `features_*.csv` at build time (baked into the Docker image) and derives phantom-row features directly from the cached store - never re-running the full feature-engineering pipeline.
 
 ## API Endpoints
 
 ### `GET /health`
 
-Health check. Returns immediately.
+Health check. Returns status of model and feature store readiness.
 
 **Response:**
 ```json
 {
-  "status": "ok"
+  "status": "ok",
+  "model_ready": true,
+  "feature_store_ready": true
 }
 ```
 
 ### `GET /exercises`
 
-Lists all exercises that appear in the workout history, sorted by most recently trained.
+Lists all exercises that appear in the workout history, sorted by most recently trained. Reads from the cached feature store (no disk I/O on warm requests).
 
 **Response:**
 ```json
@@ -161,23 +169,25 @@ This script:
 | `DAGSHUB_REPO_OWNER` | Yes | DagsHub username |
 | `DAGSHUB_REPO_NAME` | Yes | Repository name on DagsHub |
 | `MLFLOW_MODEL_URI` | No | Model registry URI (default: `models:/hevy-fti-model/latest`) |
-| `HISTORY_CSV_PATH` | No | Path to workout history CSV (default: `data/processed/workouts_exercises.csv`) |
+| `PROCESSED_DIR` | No | Directory containing the feature store CSV (default: `data/processed`) |
 
 ## Performance Notes
 
-- **First request per instance:** ~5-10 seconds (model download from DagsHub MLflow)
-- **Subsequent requests:** ~100-300 ms
+- **Cold start (new instance):** ~5-10 seconds (model download from DagsHub MLflow + feature store load from CSV). Both happen in background threads at startup.
+- **Warm requests:** ~2-5 ms (feature computation is O(1) phantom-row lookup from cached store; no disk I/O, no re-computation of the full feature pipeline)
 - **Cold starts avoided:** `--min-instances 1` keeps one container always running
 - **Model caching:** The sklearn pipeline is cached in memory via `ModelProvider`
+- **Feature store caching:** The pre-computed `features_*.csv` is loaded once at startup into a `FeatureStoreCache` with pre-aggregated daily tables, avoiding O(n²) recomputation on every request
 
 ## Files
 
 | File | Purpose |
 |------|---------|
 | `src/inference_pipeline/api.py` | FastAPI application |
-| `src/inference_pipeline/feature_provider.py` | Feature engineering for inference |
+| `src/inference_pipeline/feature_store.py` | Loads and caches pre-computed feature CSV from the feature store |
+| `src/inference_pipeline/feature_provider.py` | Builds phantom-row features from cached store (O(1) lookups) |
 | `src/inference_pipeline/inference.py` | Model loading and prediction helpers |
-| `Dockerfile.serve` | Inference container definition |
+| `Dockerfile.serve` | Inference container definition (copies `data/processed/` at build time) |
 | `cloudbuild.yaml` | Cloud Build configuration |
 | `scripts/setup-gcp.sh` | One-time GCP setup |
 | `scripts/set-permissions.sh` | IAM permission setup |

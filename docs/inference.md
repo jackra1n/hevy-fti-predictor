@@ -24,92 +24,9 @@ The model and pre-computed feature store are loaded in **background threads at i
 
 This follows the FTI architecture: the **Feature Pipeline** (GitHub Actions) computes features and pushes them to GCS via DVC. The **Inference Pipeline** pulls the latest `features_*.csv` at build time (baked into the Docker image) and derives phantom-row features directly from the cached store - never re-running the full feature-engineering pipeline.
 
-## API Endpoints
+## API
 
-### `GET /health`
-
-Health check. Returns status of model and feature store readiness.
-
-**Response:**
-```json
-{
-  "status": "ok",
-  "model_ready": true,
-  "feature_store_ready": true
-}
-```
-
-### `GET /exercises`
-
-Lists all exercises that appear in the workout history, sorted by most recently trained. Reads from the cached feature store (no disk I/O on warm requests).
-
-**Response:**
-```json
-[
-  {
-    "name": "Bench Press (Barbell)",
-    "last_trained": "2026-04-29"
-  }
-]
-```
-
-### `POST /predict`
-
-Predicts the total volume for a single exercise's next session.
-
-**Request:**
-```json
-{
-  "exercise_name": "Bench Press (Barbell)",
-  "planned_time": "2026-05-16T18:00:00Z"
-}
-```
-
-`planned_time` is optional; defaults to now.
-
-**Response:**
-```json
-{
-  "exercise_name": "Bench Press (Barbell)",
-  "predicted_volume_kg": 1832.2,
-  "estimated_weight_kg": 59.1,
-  "estimated_sets": 4,
-  "estimated_reps_per_set": 7.8,
-  "last_session_date": "2026-04-29",
-  "last_session_volume_kg": 1910.0,
-  "features_used": { ... },
-  "model_version": "hevy-fti-model:latest"
-}
-```
-
-### `POST /predict/batch`
-
-Predicts volumes for multiple exercises in a single request. Useful for demoing a full workout plan.
-
-**Request:**
-```json
-{
-  "exercises": [
-    "Bench Press (Barbell)",
-    "Hammer Curl (Dumbbell)",
-    "Pull Up"
-  ],
-  "planned_time": "2026-05-16T18:00:00Z"
-}
-```
-
-**Response:**
-```json
-{
-  "predictions": [
-    { "exercise_name": "Bench Press (Barbell)", "predicted_volume_kg": 1832.2, ... },
-    { "exercise_name": "Hammer Curl (Dumbbell)", "predicted_volume_kg": 391.0, ... },
-    { "exercise_name": "Pull Up", "predicted_volume_kg": 0.0, ... }
-  ]
-}
-```
-
-Partial failures are allowed: if one exercise has no history, it is skipped and the rest are returned.
+See [api.md](api.md) for the full API reference (endpoints, request/response schemas, and curl examples).
 
 ## Local Testing
 

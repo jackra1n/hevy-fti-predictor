@@ -2,7 +2,10 @@
 
 > *your gym data, but make it machine learning*
 
-A fully automated MLOps pipeline that pulls your workout history from [Hevy](https://hevyapp.com/), engineers features, and trains models to predict future training loads — all versioned, containerized, and running on CI/CD.
+A fully automated MLOps pipeline that pulls your workout history from [Hevy](https://hevyapp.com/), engineers features, and trains models to predict future training loads.
+
+> [!IMPORTANT]
+> This is an MLOps project for a university course. The focus is on the *pipeline* (automation, reproducibility, architecture), **not** model accuracy. I tried my best to make the model "not bad", but it's definitely not perfect.
 
 **Stack:** Python · FastAPI · DVC · MLflow (DagsHub) · Docker · Cloud Run · GitHub Actions · GCS
 

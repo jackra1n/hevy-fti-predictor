@@ -73,9 +73,9 @@ This script:
 1. Builds the image via Google Cloud Build (using `cloudbuild.yaml` + `Dockerfile.serve`)
 2. Pushes to Artifact Registry
 3. Deploys to Cloud Run with:
-   - `--min-instances 1` (keeps one instance warm)
    - `--max-instances 1` (limits cost)
    - `--memory 1Gi`
+   - `--cpu 2`
    - `--allow-unauthenticated` (public access)
 
 ### Environment Variables
@@ -87,14 +87,6 @@ This script:
 | `DAGSHUB_REPO_NAME` | Yes | Repository name on DagsHub |
 | `MLFLOW_MODEL_URI` | No | Model registry URI (default: `models:/hevy-fti-model/latest`) |
 | `PROCESSED_DIR` | No | Directory containing the feature store CSV (default: `data/processed`) |
-
-## Performance Notes
-
-- **Cold start (new instance):** ~5-10 seconds (model download from DagsHub MLflow + feature store load from CSV). Both happen in background threads at startup.
-- **Warm requests:** ~2-5 ms (feature computation is O(1) phantom-row lookup from cached store; no disk I/O, no re-computation of the full feature pipeline)
-- **Cold starts avoided:** `--min-instances 1` keeps one container always running
-- **Model caching:** The sklearn pipeline is cached in memory via `ModelProvider`
-- **Feature store caching:** The pre-computed `features_*.csv` is loaded once at startup into a `FeatureStoreCache` with pre-aggregated daily tables, avoiding O(n²) recomputation on every request
 
 ## Files
 

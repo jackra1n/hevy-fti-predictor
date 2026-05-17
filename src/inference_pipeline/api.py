@@ -1,9 +1,10 @@
 from __future__ import annotations
 
+import asyncio
 import os
-import threading
 import time
 import traceback
+from contextlib import asynccontextmanager
 from datetime import datetime
 from pathlib import Path
 from typing import Any
@@ -56,62 +57,61 @@ def _setup_mlflow() -> None:
 
 
 class ModelProvider:
-    """thread-safe model loader from MLflow registry"""
+    """model loader from MLflow registry"""
 
     def __init__(self, model_uri: str) -> None:
         self._model_uri = model_uri
         self._model: Any | None = None
-        self._lock = threading.Lock()
-        self._ready = threading.Event()
         self._load_error: str | None = None
 
     def load(self) -> None:
-        """download and cache the model with retries. called once in a background thread"""
-        with self._lock:
-            if self._model is not None:
-                self._ready.set()
+        """download and cache the model with retries."""
+        if self._model is not None:
+            return
+        _setup_mlflow()
+
+        max_retries = 5
+        base_delay = 2
+        for attempt in range(max_retries):
+            try:
+                print(f"Loading model from MLflow registry: {self._model_uri} (attempt {attempt + 1}/{max_retries})")
+                self._model = mlflow.sklearn.load_model(self._model_uri)  # type: ignore[reportPrivateImportUsage]
+                print("Model loaded successfully")
                 return
-            _setup_mlflow()
+            except Exception as e:
+                delay = base_delay * (2 ** attempt)
+                print(f"Failed to load model (attempt {attempt + 1}/{max_retries}): {e}, retrying in {delay}s…")
+                traceback.print_exc()
+                time.sleep(delay)
 
-            max_retries = 5
-            base_delay = 2
-            for attempt in range(max_retries):
-                try:
-                    print(f"Loading model from MLflow registry: {self._model_uri} (attempt {attempt + 1}/{max_retries})")
-                    self._model = mlflow.sklearn.load_model(self._model_uri)  # type: ignore[reportPrivateImportUsage]
-                    print("Model loaded successfully")
-                    self._ready.set()
-                    return
-                except Exception:
-                    delay = base_delay * (2 ** attempt)
-                    print(f"Failed to load model (attempt {attempt + 1}/{max_retries}), retrying in {delay}s…")
-                    traceback.print_exc()
-                    time.sleep(delay)
-
-            self._load_error = f"Failed to load model after {max_retries} attempts"
-            print(f"FATAL: {self._load_error}")
-            self._ready.set()
+        self._load_error = f"Failed to load model after {max_retries} attempts"
+        print(f"FATAL: {self._load_error}")
 
     def get(self) -> Any:
-        """return the cached model, blocking until it is ready"""
-        self._ready.wait()
+        """return the cached model"""
         if self._model is None:
             raise RuntimeError(self._load_error or "Model failed to load")
         return self._model
 
     def is_ready(self) -> bool:
-        return self._ready.is_set()
+        return self._model is not None
 
 
 _model_provider = ModelProvider(MODEL_URI)
 
-# start downloading the model and loading the feature store in background
-# threads immediately on import.  with --min-instances 1 the container
-# stays warm and everything is ready when the first request arrives.
-threading.Thread(target=_model_provider.load, daemon=True).start()
-threading.Thread(target=_feature_store.load, daemon=True).start()
 
-app = FastAPI(title="Hevy FTI Predictor")
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    print("Running startup tasks: Loading model and features...")
+    # load model and features synchronously before the server starts accepting requests
+    # this ensures Cloud Run provides unthrottled CPU for the download
+    await asyncio.to_thread(_model_provider.load)
+    await asyncio.to_thread(_feature_store.load)
+    print("Startup tasks complete.")
+    yield
+
+
+app = FastAPI(title="Hevy FTI Predictor", lifespan=lifespan)
 
 
 def _run_prediction(
